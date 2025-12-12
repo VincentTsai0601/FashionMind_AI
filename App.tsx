@@ -19,6 +19,10 @@ const App: React.FC = () => {
   const [itemDescription, setItemDescription] = useState<string>('');
   const [categories, setCategories] = useState<string[]>(['tops']);
   
+  // Video Generation State
+  const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState<boolean>(false);
+  
   // Demographics
   const [gender, setGender] = useState<string>('Woman');
   const [skinTone, setSkinTone] = useState<string>('East Asian');
@@ -35,9 +39,13 @@ const App: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [loadingStage, setLoadingStage] = useState<string>('INITIATING');
   
+  // 3D Tilt State
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+  const [tiltStyle, setTiltStyle] = useState<React.CSSProperties>({});
+
   // Chat State (Outfit Tab)
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([
-    { id: '1', role: 'model', text: 'Welcome to the Vogue AI Outfit Lab. I am Vortex, your personal style director. Let’s curate your next signature look. What is the occasion?', timestamp: Date.now() }
+    { id: '1', role: 'model', text: 'Welcome to the FashionMind AI Outfit Lab. I am Vortex, your personal style director. Let’s curate your next signature look. What is the occasion?', timestamp: Date.now() }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isChatTyping, setIsChatTyping] = useState(false);
@@ -48,6 +56,33 @@ const App: React.FC = () => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [chatHistory, activeTab]);
+
+  // --- 3D Tilt Effect Logic ---
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!imageContainerRef.current) return;
+    
+    const { left, top, width, height } = imageContainerRef.current.getBoundingClientRect();
+    const x = e.clientX - left;
+    const y = e.clientY - top;
+    
+    const centerX = width / 2;
+    const centerY = height / 2;
+    
+    const rotateX = ((y - centerY) / centerY) * -10; // Max rotation 10deg
+    const rotateY = ((x - centerX) / centerX) * 10;
+    
+    setTiltStyle({
+        transform: `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`,
+        transition: 'transform 0.1s ease-out'
+    });
+  };
+
+  const handleMouseLeave = () => {
+    setTiltStyle({
+        transform: 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)',
+        transition: 'transform 0.5s ease-out'
+    });
+  };
 
   // --- Handlers ---
 
@@ -118,28 +153,29 @@ const App: React.FC = () => {
 
     setIsGenerating(true);
     setGeneratedImage(null);
+    setGeneratedVideo(null); // Reset video
     setStylistAdvice(null);
 
     try {
-      let finalDescription = itemDescription;
+      // Step 1: Analyze Context (Weather, Demographics, User Vision)
+      setLoadingStage('ANALYZING CONTEXT...'); 
       
-      if (!finalDescription.trim()) {
-        setLoadingStage('CURATING LOOK...');
-        const suggestion = await GeminiService.suggestOutfit(
-            userImage, 
-            itemDescription, 
-            categories, 
-            nationality, 
-            season, 
-            weatherData,
-            gender,
-            skinTone
-        );
-        finalDescription = suggestion.description;
-        setStylistAdvice(suggestion.advice);
-        setItemDescription(finalDescription);
-      }
+      const suggestion = await GeminiService.suggestOutfit(
+          userImage, 
+          itemDescription, 
+          categories, 
+          nationality, 
+          season, 
+          weatherData,
+          gender,
+          skinTone
+      );
+      
+      const finalDescription = suggestion.description;
+      setStylistAdvice(suggestion.advice);
+      setItemDescription(finalDescription); 
 
+      // Step 2: Generate 3D Assets (Image)
       setLoadingStage('RENDERING 3D ASSETS...');
       const resultBase64 = await GeminiService.generateVirtualTryOn(
         userImage,
@@ -157,6 +193,34 @@ const App: React.FC = () => {
     } finally {
       setIsGenerating(false);
       setLoadingStage('READY');
+    }
+  };
+
+  const handleGenerateVideo = async () => {
+    if (!generatedImage || !itemDescription) return;
+
+    // Check for API Key using the global window object (Google AI Studio injected)
+    const aiStudio = (window as any).aistudio;
+    if (aiStudio) {
+        const hasKey = await aiStudio.hasSelectedApiKey();
+        if (!hasKey) {
+            await aiStudio.openSelectKey();
+            // We assume successful selection if the dialog closes and we proceed.
+            // A safer check would be to check hasKey again, but we'll try to proceed.
+        }
+    }
+
+    setIsGeneratingVideo(true);
+    setLoadingStage('GENERATING 360° MOTION...');
+    try {
+        const videoUri = await GeminiService.generateRotationVideo(generatedImage, itemDescription);
+        setGeneratedVideo(videoUri);
+    } catch (e) {
+        console.error("Video Generation Error:", e);
+        alert("Unable to generate 3D motion video. Please try again or check your API key.");
+    } finally {
+        setIsGeneratingVideo(false);
+        setLoadingStage('READY');
     }
   };
 
@@ -202,7 +266,7 @@ const App: React.FC = () => {
         <div className="z-20 text-center max-w-3xl px-6">
             <p className="text-xs font-bold tracking-[0.4em] text-fashion-accent mb-6 uppercase animate-[fadeIn_1s_ease-out]">The Future of Fashion</p>
             <h1 className="font-serif text-6xl md:text-8xl italic text-fashion-text mb-8 leading-tight">
-                Vogue AI <br/> Atelier
+                FashionMind AI <br/> Atelier
             </h1>
             <p className="text-fashion-subtext text-sm md:text-base tracking-widest leading-loose mb-12 max-w-xl mx-auto">
                 Experience the intersection of haute couture and artificial intelligence. 
@@ -374,6 +438,7 @@ const App: React.FC = () => {
                                     onClick={() => {
                                         setUserImage(null); 
                                         setGeneratedImage(null); 
+                                        setGeneratedVideo(null);
                                         setStylistAdvice(null);
                                         setItemDescription(''); // ALSO CLEAR TEXT ON RESET
                                     }} 
@@ -586,53 +651,97 @@ const App: React.FC = () => {
             {/* Background Texture */}
             <div className="absolute inset-0 opacity-40 pointer-events-none mix-blend-multiply" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/cream-paper.png")' }}></div>
 
-            {isGenerating ? (
-                <LoadingSpinner />
+            {isGenerating || isGeneratingVideo ? (
+                <LoadingSpinner message={loadingStage} />
             ) : generatedImage ? (
-                <div className="w-full h-full max-w-5xl flex flex-col items-center justify-center animate-[fadeIn_1s_ease-out] z-10">
+                <div className="w-full h-full max-w-6xl flex flex-col items-center justify-center animate-[fadeIn_1s_ease-out] z-10">
                     
-                    <div className="relative w-full h-full flex flex-col md:flex-row gap-12 items-center justify-center">
-                        {/* The Image Frame */}
-                        <div className="relative bg-white p-4 shadow-2xl shadow-neutral-200 transform rotate-1 transition-transform hover:rotate-0 duration-500 max-h-[85vh] flex-shrink-0 border border-neutral-100">
-                             <img 
-                                src={generatedImage} 
-                                alt="Editorial Result" 
-                                className="max-h-[70vh] w-auto object-contain" 
-                            />
-                            <div className="mt-4 flex justify-between items-end pt-4">
-                                <div>
-                                    <p className="text-[10px] uppercase tracking-widest text-fashion-accent font-bold">Collection</p>
-                                    <p className="font-serif italic text-lg text-fashion-text capitalize">{season} Collection</p>
-                                    {weatherData && <p className="text-[10px] text-fashion-subtext mt-1">{weatherData.split(':')[0] || 'Local'} Edition</p>}
-                                </div>
-                                <div className="flex gap-2">
-                                     <button 
-                                        onClick={handleSaveToWardrobe}
-                                        className="text-[10px] uppercase tracking-widest text-fashion-text border border-fashion-text px-6 py-3 hover:bg-fashion-accent hover:border-fashion-accent hover:text-white transition-colors"
-                                    >
-                                        Save to Wardrobe
-                                    </button>
-                                    <a 
-                                        href={generatedImage}
-                                        download="vogue-ai-look.jpg"
-                                        className="text-[10px] uppercase tracking-widest bg-fashion-text text-white px-6 py-3 hover:bg-fashion-accent transition-colors flex items-center"
-                                    >
-                                        Download
-                                    </a>
+                    <div className="relative w-full h-full flex flex-col md:flex-row gap-8 lg:gap-16 items-center justify-center">
+                        {/* The Image/Video Frame */}
+                        <div className="flex flex-col items-center gap-4">
+                             <div 
+                                ref={imageContainerRef}
+                                onMouseMove={handleMouseMove}
+                                onMouseLeave={handleMouseLeave}
+                                style={generatedVideo ? {} : tiltStyle}
+                                className="relative bg-white p-4 shadow-2xl shadow-neutral-200 max-h-[60vh] md:max-h-[80vh] flex-shrink border border-neutral-100 flex flex-col transition-all duration-100 ease-out"
+                             >
+                                {generatedVideo ? (
+                                    <div className="relative h-[60vh] aspect-[9/16]">
+                                        <video 
+                                            src={generatedVideo} 
+                                            autoPlay 
+                                            loop 
+                                            playsInline 
+                                            className="w-full h-full object-cover"
+                                        />
+                                        <div className="absolute bottom-2 right-2 bg-black/50 text-white text-[8px] px-2 py-1 uppercase tracking-widest">360° View</div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <img 
+                                            src={generatedImage} 
+                                            alt="Editorial Result" 
+                                            className="h-full w-auto object-contain max-h-[50vh] md:max-h-[70vh] cursor-move" 
+                                        />
+                                        {!generatedVideo && (
+                                            <div className="absolute top-2 right-2 bg-white/80 backdrop-blur-sm px-2 py-1 text-[8px] uppercase tracking-widest text-fashion-accent border border-fashion-accent/20 rounded-sm pointer-events-none">
+                                                Interactive 3D Card
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+
+                                <div className="mt-4 flex justify-between items-end pt-4 border-t border-dashed border-neutral-100">
+                                    <div>
+                                        <p className="text-[10px] uppercase tracking-widest text-fashion-accent font-bold">Collection</p>
+                                        <p className="font-serif italic text-lg text-fashion-text capitalize">{season} Collection</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={handleSaveToWardrobe}
+                                            className="text-[10px] uppercase tracking-widest text-fashion-text border border-fashion-text px-4 py-2 hover:bg-fashion-accent hover:border-fashion-accent hover:text-white transition-colors"
+                                        >
+                                            Save
+                                        </button>
+                                        <a 
+                                            href={generatedImage}
+                                            download="vogue-ai-look.jpg"
+                                            className="text-[10px] uppercase tracking-widest bg-fashion-text text-white px-4 py-2 hover:bg-fashion-accent transition-colors flex items-center"
+                                        >
+                                            Download
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
+                            
+                            {/* 360 Video Button */}
+                            {!generatedVideo && (
+                                <button
+                                    onClick={handleGenerateVideo}
+                                    className="group flex items-center gap-2 px-6 py-3 bg-white border border-fashion-accent/30 rounded-full shadow-lg hover:shadow-xl hover:border-fashion-accent transition-all hover:-translate-y-1"
+                                >
+                                    <span className="relative flex h-3 w-3">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-fashion-accent opacity-75"></span>
+                                      <span className="relative inline-flex rounded-full h-3 w-3 bg-fashion-accent"></span>
+                                    </span>
+                                    <span className="text-xs font-bold uppercase tracking-widest text-fashion-text group-hover:text-fashion-accent">
+                                        Generate 360° Motion
+                                    </span>
+                                </button>
+                            )}
                         </div>
 
                         {/* Stylist Note */}
                         {stylistAdvice && (
-                            <div className="md:w-72 flex flex-col self-end md:self-center animate-[slideUp_1s_ease-out]">
-                                <div className="relative bg-white p-8 shadow-xl shadow-orange-900/5 rounded-sm border-l-4 border-fashion-accent">
-                                    <span className="text-[10px] uppercase tracking-[0.3em] text-fashion-subtext block mb-6">Director's Note</span>
-                                    <p className="font-serif text-xl leading-relaxed text-fashion-text mb-6 italic">
-                                        "{stylistAdvice}"
+                            <div className="w-full md:w-80 lg:w-96 flex flex-col self-center animate-[slideUp_1s_ease-out]">
+                                <div className="relative bg-white/95 backdrop-blur-sm p-8 shadow-xl shadow-neutral-900/5 rounded-sm border-l-4 border-fashion-accent">
+                                    <span className="text-[10px] uppercase tracking-[0.3em] text-fashion-subtext block mb-6 font-bold">Director's Note</span>
+                                    <p className="font-serif text-lg leading-8 text-fashion-text mb-6">
+                                        {stylistAdvice}
                                     </p>
                                     <div className="w-12 h-1 bg-fashion-accent mb-2"></div>
-                                    <p className="text-xs text-fashion-subtext font-sans">Vogue AI Atelier</p>
+                                    <p className="text-xs text-fashion-subtext font-sans tracking-wide">FashionMind AI Atelier</p>
                                 </div>
                             </div>
                         )}
@@ -641,7 +750,7 @@ const App: React.FC = () => {
                 </div>
             ) : (
                 <div className="text-center opacity-40 z-10">
-                    <h3 className="font-serif text-7xl italic mb-6 text-fashion-text">Vogue AI</h3>
+                    <h3 className="font-serif text-7xl italic mb-6 text-fashion-text">FashionMind AI</h3>
                     <p className="text-xs uppercase tracking-[0.5em] text-fashion-accent font-bold">3D Virtual Atelier Experience</p>
                     <p className="text-[10px] text-fashion-subtext mt-4 max-w-xs mx-auto">Upload your photo, set the context, and let our generative engine render your high-fashion look.</p>
                 </div>
@@ -659,7 +768,7 @@ const App: React.FC = () => {
             <div className="w-8 h-8 bg-fashion-accent text-white flex items-center justify-center">
                 <span className="font-serif italic text-lg">V</span>
             </div>
-            <h1 className="font-serif text-2xl tracking-widest uppercase text-fashion-text">VOGUE<span className="font-sans font-light text-fashion-accent ml-2 text-sm tracking-normal">AI ATELIER</span></h1>
+            <h1 className="font-serif text-2xl tracking-widest uppercase text-fashion-text">FashionMind<span className="font-sans font-light text-fashion-accent ml-2 text-sm tracking-normal">AI ATELIER</span></h1>
         </div>
         <nav className="hidden md:flex gap-10 text-xs tracking-[0.2em] font-medium">
             <button 

@@ -2,7 +2,7 @@ import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 
 // Initialize Gemini Client
 // Note: API Key is injected via process.env.API_KEY environment variable.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
  * Fetches the current weather for a given query (City or Lat/Long) using Google Search Grounding.
@@ -48,6 +48,7 @@ export const suggestOutfit = async (
     try {
         const cleanBase64 = imageBase64.split(',')[1] || imageBase64;
         const categoriesStr = categories.length > 0 ? categories.join(', ') : 'complete outfit';
+        const weatherContext = weather || "Not specified (assume standard indoor/outdoor)";
 
         const prompt = `
             You are an expert fashion stylist.
@@ -55,21 +56,25 @@ export const suggestOutfit = async (
             
             User Demographics:
             - Gender: ${gender}
-            - Skin Tone / Ethnicity: ${skinTone}
+            - Skin Tone: ${skinTone}
             
             Context:
-            - Preference/Vision: "${userPreference}"
-            - Target Items: ${categoriesStr}
+            - User Vision: "${userPreference}"
+            - Target Categories: ${categoriesStr}
             - Season: "${season}"
-            - Weather: "${weather}"
+            - Weather: "${weatherContext}"
             - Region Style: "${nationality}"
 
             Tasks:
-            1. Select specific fashion items for the requested categories (${categoriesStr}).
-            2. COLOR THEORY: CRITICAL - Choose colors that strictly complement the user's ${skinTone} skin tone (e.g., earthy tones for olive skin, jewel tones for darker skin, pastels for lighter skin, etc).
-            3. FIT: Ensure the cut and silhouette matches the requested gender (${gender}) and current high-fashion trends.
-            4. Write a detailed visual description for image generation (fabric, color, fit).
-            5. Write a short advice explaining why these colors/cuts suit their skin tone and gender.
+            1. Analyze the User's Vision (if provided) and the environment.
+            2. WEATHER CHECK: Ensure the outfit is practical for "${weatherContext}". (e.g., suggest breathable fabrics for heat, layers for cold, water-resistant for rain).
+            3. COLOR THEORY: Choose colors that strictly complement the user's ${skinTone} skin tone.
+            4. Refine the description:
+               - If User Vision is present: Keep the core idea but enhance it with weather-appropriate fabrics and flattering cuts.
+               - If User Vision is empty: Create a completely new, trendy look fitting the season/weather.
+            5. Output JSON:
+               - "description": Detailed visual prompt for the image generator (include fabric textures).
+               - "advice": A friendly stylist note explaining how this look adapts to the *Weather* and suits their *Skin Tone*.
         `;
 
         const response: GenerateContentResponse = await ai.models.generateContent({
@@ -96,7 +101,7 @@ export const suggestOutfit = async (
         const json = JSON.parse(response.text || '{}');
         return {
             description: json.description || userPreference || `Stylish ${categoriesStr} for ${gender}`,
-            advice: json.advice || "Here is a look I think you'll love!"
+            advice: json.advice || "Here is a look curated for the current atmosphere."
         };
 
     } catch (error) {
@@ -105,7 +110,7 @@ export const suggestOutfit = async (
         const catStr = categories.length > 0 ? categories.join(' and ') : 'outfit';
         return {
             description: userPreference || `A stylish ${catStr}`,
-            advice: "I couldn't generate a specific suggestion, so I improvised a trendy look for you."
+            advice: "I've improvised a look for you based on the context."
         };
     }
 };
@@ -130,6 +135,7 @@ export const generateVirtualTryOn = async (
         // Clean base64 string if it contains metadata
         const cleanBase64 = imageBase64.split(',')[1] || imageBase64;
         const categoriesStr = categories.length > 0 ? categories.join(', ') : 'outfit';
+        const weatherContext = weather || "Standard";
 
         // Construct a prompt that guides the model to "edit" the person's clothing
         // without changing their identity or the background.
@@ -144,12 +150,12 @@ export const generateVirtualTryOn = async (
             Context:
             - Categories being changed: ${categoriesStr}
             - Season: ${season}
-            - Weather: ${weather}
+            - Weather: "${weatherContext}"
             
             Strict Requirements:
             1. Keep the person's face, body pose, identity, and skin tone EXACTLY the same.
             2. Keep the background EXACTLY the same.
-            3. The lighting on the clothing must match the scene's lighting.
+            3. ATMOSPHERE ADAPTATION: Ensure fabric weight, texture, and lighting match the weather context (e.g. heavier for cold, lighter for hot, subtle wetness if raining).
             4. Ensure the clothing fit aligns with standard ${gender} fashion tailoring.
             5. Output ONLY the image.
         `;
@@ -204,6 +210,53 @@ export const generateVirtualTryOn = async (
         throw error;
     }
 };
+
+/**
+ * Generates a 360-degree rotating video of the subject using Veo.
+ * NOTE: Creates a new client instance to ensure latest API key is used.
+ */
+export const generateRotationVideo = async (
+    imageBase64: string, 
+    description: string
+): Promise<string> => {
+    // IMPORTANT: Create a fresh instance to pick up the key if user just selected it via window.aistudio
+    const freshAi = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const cleanBase64 = imageBase64.split(',')[1] || imageBase64;
+
+    console.log("Starting Veo generation...");
+    
+    let operation = await freshAi.models.generateVideos({
+        model: 'veo-3.1-fast-generate-preview',
+        prompt: `Cinematic 360 degree turntable shot of this fashion model wearing ${description}. Smooth camera motion, high fashion editorial lighting, photorealistic 4k.`,
+        image: {
+            imageBytes: cleanBase64,
+            mimeType: 'image/jpeg',
+        },
+        config: {
+            numberOfVideos: 1,
+            resolution: '720p',
+            aspectRatio: '9:16' // Matches vertical portrait
+        }
+    });
+
+    console.log("Video operation started:", operation);
+
+    // Poll for completion
+    while (!operation.done) {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Check every 5s
+        operation = await freshAi.operations.getVideosOperation({ operation: operation });
+        console.log("Polling video status...");
+    }
+
+    const videoUri = operation.response?.generatedVideos?.[0]?.video?.uri;
+    if (!videoUri) {
+        throw new Error("Video generation failed or returned no URI");
+    }
+
+    // Append API key to fetch the binary content
+    return `${videoUri}&key=${process.env.API_KEY}`;
+};
+
 
 /**
  * Chat with the Stylist (Text only, but can be multimodal if we passed history images).

@@ -1,6 +1,10 @@
 import React from 'react';
 
-const LoadingSpinner: React.FC = () => {
+interface LoadingSpinnerProps {
+  message?: string;
+}
+
+const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({ message }) => {
   return (
     <div className="flex flex-col items-center justify-center p-12 space-y-6">
       <div className="relative w-24 h-24 flex items-center justify-center">
@@ -12,7 +16,7 @@ const LoadingSpinner: React.FC = () => {
       </div>
       <div className="flex flex-col items-center space-y-2">
         <p className="text-fashion-text text-xs tracking-[0.3em] uppercase font-light">Atelier AI</p>
-        <p className="text-fashion-subtext text-[10px] tracking-widest">DESIGNING YOUR LOOK</p>
+        <p className="text-fashion-subtext text-[10px] tracking-widest">{message || 'DESIGNING YOUR LOOK'}</p>
       </div>
     </div>
   );
