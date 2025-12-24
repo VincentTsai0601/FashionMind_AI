@@ -1,14 +1,25 @@
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 
-// Initialize Gemini Client
-// Note: API Key is injected via process.env.API_KEY environment variable.
-let ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Lazily create Gemini client so we don't attempt to construct it at module
+// import time (which throws if the API key is missing). Prefer using
+// `process.env.GEMINI_API_KEY` (recommended) or fall back to
+// `process.env.API_KEY` for compatibility with older config.
+const getAi = () => {
+    const key = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (!key) {
+        throw new Error(
+            "GEMINI_API_KEY is not set. For security, call the Gemini API from a server-side endpoint or set the key in a local .env file for development."
+        );
+    }
+    return new GoogleGenAI({ apiKey: key });
+};
 
 /**
  * Fetches the current weather for a given query (City or Lat/Long) using Google Search Grounding.
  */
 export const getWeather = async (locationQuery: string): Promise<{ text: string; sources: { title: string; uri: string }[] }> => {
     try {
+        const ai = getAi();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `What is the current weather in ${locationQuery}? Return a very concise summary (e.g., "City: 20°C, Sunny").`,
@@ -77,6 +88,7 @@ export const suggestOutfit = async (
                - "advice": A friendly stylist note explaining how this look adapts to the *Weather* and suits their *Skin Tone*.
         `;
 
+        const ai = getAi();
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: {
@@ -160,6 +172,7 @@ export const generateVirtualTryOn = async (
             5. Output ONLY the image.
         `;
 
+        const ai = getAi();
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: model,
             contents: {
@@ -220,7 +233,7 @@ export const generateRotationVideo = async (
     description: string
 ): Promise<string> => {
     // IMPORTANT: Create a fresh instance to pick up the key if user just selected it via window.aistudio
-    const freshAi = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const freshAi = getAi();
     const cleanBase64 = imageBase64.split(',')[1] || imageBase64;
 
     console.log("Starting Veo generation...");
@@ -254,7 +267,8 @@ export const generateRotationVideo = async (
     }
 
     // Append API key to fetch the binary content
-    return `${videoUri}&key=${process.env.API_KEY}`;
+    const key = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    return `${videoUri}&key=${key}`;
 };
 
 
@@ -267,6 +281,7 @@ export const getStylistAdvice = async (
     newMessage: string
 ): Promise<string> => {
     try {
+        const ai = getAi();
         const chat = ai.chats.create({
             model: 'gemini-2.5-flash',
             config: {
