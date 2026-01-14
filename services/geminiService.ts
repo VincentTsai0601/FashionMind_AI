@@ -1,17 +1,19 @@
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+import { GenerateContentResponse, Type } from "@google/genai";
 
-// Lazily create Gemini client so we don't attempt to construct it at module
-// import time (which throws if the API key is missing). Prefer using
-// `process.env.GEMINI_API_KEY` (recommended) or fall back to
-// `process.env.API_KEY` for compatibility with older config.
-const getAi = () => {
-    const key = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (!key) {
-        throw new Error(
-            "GEMINI_API_KEY is not set. For security, call the Gemini API from a server-side endpoint or set the key in a local .env file for development."
-        );
+// Client-side proxy wrappers. These functions call the local server proxy
+// endpoints under `/api/*` which perform the actual Gemini calls using a
+// server-side API key. This prevents exposing the key to the browser.
+const apiFetch = async (path: string, body: any) => {
+    const res = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Server proxy error: ${res.status} ${errText}`);
     }
-    return new GoogleGenAI({ apiKey: key });
+    return res.json();
 };
 
 /**
@@ -19,26 +21,13 @@ const getAi = () => {
  */
 export const getWeather = async (locationQuery: string): Promise<{ text: string; sources: { title: string; uri: string }[] }> => {
     try {
-        const ai = getAi();
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `What is the current weather in ${locationQuery}? Return a very concise summary (e.g., "City: 20°C, Sunny").`,
-            config: {
-                tools: [{ googleSearch: {} }],
-            }
-        });
-
-        const text = response.text || "Weather data unavailable";
-        
-        // Extract sources from grounding chunks if available
-        const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
-            ?.map((chunk: any) => chunk.web)
-            .filter((web: any) => web) || [];
-
+        const response = await apiFetch('/api/get-weather', { locationQuery });
+        const text = response.text || response.output?.[0]?.text || 'Weather data unavailable';
+        const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((c: any) => c.web).filter((w: any) => w) || [];
         return { text, sources };
     } catch (error) {
-        console.error("Weather Fetch Error:", error);
-        return { text: "Unable to fetch weather", sources: [] };
+        console.error('Weather Fetch Error:', error);
+        return { text: 'Unable to fetch weather', sources: [] };
     }
 };
 
@@ -88,32 +77,12 @@ export const suggestOutfit = async (
                - "advice": A friendly stylist note explaining how this look adapts to the *Weather* and suits their *Skin Tone*.
         `;
 
-        const ai = getAi();
-        const response: GenerateContentResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: {
-                parts: [
-                    { text: prompt },
-                    { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } }
-                ]
-            },
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        description: { type: Type.STRING },
-                        advice: { type: Type.STRING }
-                    },
-                    required: ['description', 'advice']
-                }
-            }
-        });
-
-        const json = JSON.parse(response.text || '{}');
+        const response = await apiFetch('/api/suggest-outfit', { imageBase64: cleanBase64, userPreference, categories, nationality, season, weather: weatherContext, gender, skinTone, prompt });
+        // server returns the full Gemini response; prefer JSON text if present
+        const json = response.parsed || (response.text ? JSON.parse(response.text || '{}') : {});
         return {
             description: json.description || userPreference || `Stylish ${categoriesStr} for ${gender}`,
-            advice: json.advice || "Here is a look curated for the current atmosphere."
+            advice: json.advice || 'Here is a look curated for the current atmosphere.'
         };
 
     } catch (error) {
@@ -173,50 +142,9 @@ export const generateVirtualTryOn = async (
         `;
 
         const ai = getAi();
-        const response: GenerateContentResponse = await ai.models.generateContent({
-            model: model,
-            contents: {
-                parts: [
-                    {
-                        text: prompt
-                    },
-                    {
-                        inlineData: {
-                            mimeType: 'image/jpeg',
-                            data: cleanBase64
-                        }
-                    }
-                ]
-            }
-        });
-
-        // Parse response to find the image
-        // Gemini returns inlineData for generated images in the parts list
-        const candidates = response.candidates;
-        if (!candidates || candidates.length === 0) {
-            throw new Error("No candidates returned from Gemini.");
-        }
-
-        const parts = candidates[0].content.parts;
-        let generatedImageBase64 = null;
-
-        for (const part of parts) {
-            if (part.inlineData && part.inlineData.data) {
-                generatedImageBase64 = part.inlineData.data;
-                break;
-            }
-        }
-
-        if (!generatedImageBase64) {
-            // Sometimes models return text saying they can't do it, handle that.
-            const textPart = parts.find(p => p.text);
-            if (textPart) {
-                throw new Error(`Model returned text instead of image: ${textPart.text}`);
-            }
-            throw new Error("No image data found in response.");
-        }
-
-        return `data:image/jpeg;base64,${generatedImageBase64}`;
+        const response = await apiFetch('/api/generate-tryon', { imageBase64: cleanBase64, itemDescription, categories, season, weather: weatherContext, gender, skinTone, prompt });
+        if (response.image) return response.image;
+        throw new Error('No image returned from server proxy');
 
     } catch (error) {
         console.error("Try-On Generation Error:", error);
