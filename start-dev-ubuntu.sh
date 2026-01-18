@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# FashionMind AI - Development Server Startup Script (Generic Unix/Linux/macOS)
+# FashionMind AI - Ubuntu/Linux Development Server Startup Script
 
 echo "🎨 FashionMind AI - Starting Development Servers"
 echo "=================================================="
@@ -27,5 +27,4 @@ npm run dev
 # Kill backend when frontend exits
 kill $BACKEND_PID 2>/dev/null
 
-echo "👋 Development servers stopped."# Kill backend when frontend exits
-kill $BACKEND_PID 2>/dev/null
+echo "👋 Development servers stopped."
