@@ -3,17 +3,58 @@ import { GenerateContentResponse, Type } from "@google/genai";
 // Client-side proxy wrappers. These functions call the local server proxy
 // endpoints under `/api/*` which perform the actual Gemini calls using a
 // server-side API key. This prevents exposing the key to the browser.
-const apiFetch = async (path: string, body: any) => {
-    const res = await fetch(path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-    if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Server proxy error: ${res.status} ${errText}`);
+const apiFetch = async (path: string, body: any, retries: number = 3): Promise<any> => {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+            const res = await fetch(path, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            
+            if (!res.ok) {
+                const errText = await res.text();
+                try {
+                    const errJson = JSON.parse(errText);
+                    lastError = new Error(`${res.status}: ${errJson.error || errText}`);
+                } catch {
+                    lastError = new Error(`${res.status}: ${errText || res.statusText}`);
+                }
+                
+                // Rate limit (429) or server error (5xx) - retry with backoff
+                if (res.status === 429 || res.status >= 500) {
+                    if (attempt < retries - 1) {
+                        const backoffMs = Math.min(1000 * Math.pow(2, attempt), 10000) + Math.random() * 1000;
+                        console.log(`Rate limited or server error. Retrying in ${backoffMs.toFixed(0)}ms... (Attempt ${attempt + 1}/${retries})`);
+                        await new Promise(resolve => setTimeout(resolve, backoffMs));
+                        continue;
+                    }
+                }
+                
+                throw lastError;
+            }
+            
+            return res.json();
+        } catch (error) {
+            lastError = error as Error;
+            
+            // If it's a rate limit, retry
+            if (lastError.message.includes('429') && attempt < retries - 1) {
+                const backoffMs = Math.min(1000 * Math.pow(2, attempt), 10000) + Math.random() * 1000;
+                console.log(`Rate limited. Retrying in ${backoffMs.toFixed(0)}ms... (Attempt ${attempt + 1}/${retries})`);
+                await new Promise(resolve => setTimeout(resolve, backoffMs));
+                continue;
+            }
+            
+            if (attempt === retries - 1) {
+                throw lastError;
+            }
+        }
     }
-    return res.json();
+    
+    throw lastError || new Error('Unknown error occurred');
 };
 
 /**
@@ -141,8 +182,15 @@ export const generateVirtualTryOn = async (
             5. Output ONLY the image.
         `;
 
-        const ai = getAi();
         const response = await apiFetch('/api/generate-tryon', { imageBase64: cleanBase64, itemDescription, categories, season, weather: weatherContext, gender, skinTone, prompt });
+        
+        // Handle fallback response (when image generation quota is exhausted)
+        if (response.fallback && response.description) {
+            console.warn('Using fallback description due to API quota limits');
+            console.warn(response.note);
+            return ''; // Return empty string to signal fallback mode to UI
+        }
+        
         if (response.image) return response.image;
         throw new Error('No image returned from server proxy');
 
@@ -160,43 +208,10 @@ export const generateRotationVideo = async (
     imageBase64: string, 
     description: string
 ): Promise<string> => {
-    // IMPORTANT: Create a fresh instance to pick up the key if user just selected it via window.aistudio
-    const freshAi = getAi();
     const cleanBase64 = imageBase64.split(',')[1] || imageBase64;
-
     console.log("Starting Veo generation...");
-    
-    let operation = await freshAi.models.generateVideos({
-        model: 'veo-3.1-fast-generate-preview',
-        prompt: `Cinematic 360 degree turntable shot of this fashion model wearing ${description}. Smooth camera motion, high fashion editorial lighting, photorealistic 4k.`,
-        image: {
-            imageBytes: cleanBase64,
-            mimeType: 'image/jpeg',
-        },
-        config: {
-            numberOfVideos: 1,
-            resolution: '720p',
-            aspectRatio: '9:16' // Matches vertical portrait
-        }
-    });
-
-    console.log("Video operation started:", operation);
-
-    // Poll for completion
-    while (!operation.done) {
-        await new Promise(resolve => setTimeout(resolve, 5000)); // Check every 5s
-        operation = await freshAi.operations.getVideosOperation({ operation: operation });
-        console.log("Polling video status...");
-    }
-
-    const videoUri = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (!videoUri) {
-        throw new Error("Video generation failed or returned no URI");
-    }
-
-    // Append API key to fetch the binary content
-    const key = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    return `${videoUri}&key=${key}`;
+    const response = await apiFetch('/api/generate-rotation', { imageBase64: cleanBase64, description });
+    return response.uri;
 };
 
 
@@ -209,22 +224,7 @@ export const getStylistAdvice = async (
     newMessage: string
 ): Promise<string> => {
     try {
-        const ai = getAi();
-        const chat = ai.chats.create({
-            model: 'gemini-2.5-flash',
-            config: {
-                systemInstruction: "You are a high-end fashion stylist named 'Vortex'. You are helpful, trendy, and concise. Offer advice on color theory, fit, and accessories. Keep responses under 100 words unless asked for more details.",
-            },
-            history: history.map(h => ({
-                role: h.role,
-                parts: [{ text: h.text }]
-            }))
-        });
-
-        const response: GenerateContentResponse = await chat.sendMessage({
-            message: newMessage
-        });
-
+        const response = await apiFetch('/api/stylist-chat', { history, newMessage });
         return response.text || "I'm having trouble connecting to the fashion mainframe. Please try again.";
 
     } catch (error) {

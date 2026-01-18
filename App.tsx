@@ -158,7 +158,7 @@ const App: React.FC = () => {
 
     try {
       // Step 1: Analyze Context (Weather, Demographics, User Vision)
-      setLoadingStage('ANALYZING CONTEXT...'); 
+      setLoadingStage('ANALYZING CONTEXT... (Please wait, may take up to 30 seconds)'); 
       
       const suggestion = await GeminiService.suggestOutfit(
           userImage, 
@@ -176,7 +176,7 @@ const App: React.FC = () => {
       setItemDescription(finalDescription); 
 
       // Step 2: Generate 3D Assets (Image)
-      setLoadingStage('RENDERING 3D ASSETS...');
+      setLoadingStage('RENDERING 3D ASSETS... (Please wait, may take up to 30 seconds)');
       const resultBase64 = await GeminiService.generateVirtualTryOn(
         userImage,
         finalDescription,
@@ -186,10 +186,32 @@ const App: React.FC = () => {
         gender,
         skinTone
       );
-      setGeneratedImage(resultBase64);
+      
+      if (resultBase64) {
+        setGeneratedImage(resultBase64);
+      } else {
+        // Fallback: show stylist advice without generated image
+        alert('Virtual try-on image generation is temporarily unavailable (free tier quota exceeded).\n\nYou can:\n1. Wait 24 hours for quota reset\n2. Upgrade your API plan at https://aistudio.google.com/\n\nThe style advice above can guide your real-world outfit selection!');
+      }
     } catch (error) {
-      console.error(error);
-      alert("The atelier is currently busy. Please try again.");
+      console.error('Try-On Error:', error);
+      let errorMessage = "The atelier is currently busy. Please try again.";
+      
+      if (error instanceof Error) {
+        if (error.message.includes('429') || error.message.includes('quota')) {
+          errorMessage = "The stylist is attending to many clients. Please wait 1-2 minutes and try again. (You may have hit the free tier rate limit.)";
+        } else if (error.message.includes('401') || error.message.includes('API key')) {
+          errorMessage = "Authentication failed. Please check your API key configuration.";
+        } else if (error.message.includes('500') || error.message.includes('Server proxy')) {
+          errorMessage = "The server is having trouble. Make sure your backend is running:\n\nIn terminal 1: npm run server\nIn terminal 2: npm run dev\n\nOr run: bash start-dev.sh";
+        } else if (error.message.includes('timeout')) {
+          errorMessage = "The request took too long. Please try with a smaller image or try again.";
+        } else {
+          errorMessage = `Error: ${error.message}`;
+        }
+      }
+      
+      alert(errorMessage);
     } finally {
       setIsGenerating(false);
       setLoadingStage('READY');
