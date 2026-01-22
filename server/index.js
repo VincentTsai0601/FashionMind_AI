@@ -4,6 +4,8 @@ import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import { GoogleGenAI } from '@google/genai';
+import fetch from 'node-fetch';
+
 
 // Prefer .env.local for local development if it exists, otherwise fall back to .env
 const dotenvPath = fs.existsSync('.env.local') ? '.env.local' : (fs.existsSync('.env') ? '.env' : undefined);
@@ -17,7 +19,14 @@ if (dotenvPath) {
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+//app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'https://vincenttsai0601.github.io'
+  ],
+  methods: ['GET', 'POST'],
+}));
 app.use(bodyParser.json({ limit: '20mb' }));
 
 const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
