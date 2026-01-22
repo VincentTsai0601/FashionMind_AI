@@ -20,13 +20,25 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 //app.use(cors());
+// app.use(cors({
+//   origin: [
+//     'http://localhost:3000',
+//     'https://vincenttsai0601.github.io'
+//   ],
+//   methods: ['GET', 'POST'],
+// }));
 app.use(cors({
   origin: [
     'http://localhost:3000',
     'https://vincenttsai0601.github.io'
   ],
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
 }));
+
+// Explicitly handle preflight
+app.options('*', cors());
+
 app.use(bodyParser.json({ limit: '20mb' }));
 
 const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;

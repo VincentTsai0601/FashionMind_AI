@@ -3,12 +3,19 @@ import { GenerateContentResponse, Type } from "@google/genai";
 // Client-side proxy wrappers. These functions call the local server proxy
 // endpoints under `/api/*` which perform the actual Gemini calls using a
 // server-side API key. This prevents exposing the key to the browser.
+
+const API_BASE =
+    import.meta.env.PROD
+    ? 'https://fashionmind-ai-backend.onrender.com'
+    : 'http://localhost:3001';
+
+
 const apiFetch = async (path: string, body: any, retries: number = 3): Promise<any> => {
     let lastError: Error | null = null;
     
     for (let attempt = 0; attempt < retries; attempt++) {
         try {
-            const res = await fetch(path, {
+            const res = await fetch(`${API_BASE}${path}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
