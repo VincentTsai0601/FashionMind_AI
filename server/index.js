@@ -37,7 +37,7 @@ app.use(cors({
 }));
 
 // Explicitly handle preflight
-aapp.options(/.*/, cors());
+app.options(/.*/, cors());
 
 
 app.use(bodyParser.json({ limit: '20mb' }));
