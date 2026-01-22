@@ -33,14 +33,14 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.post('/api/get-weather', async (req, res) => {
   try {
     const { locationQuery } = req.body;
+    // Use a simpler prompt without googleSearch tool to get typical weather patterns
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `What is the current weather in ${locationQuery}? Return a very concise summary (e.g., \"City: 20°C, Sunny\").`,
-      config: { tools: [{ googleSearch: {} }] }
+      contents: `Based on typical weather patterns, provide a brief weather summary for ${locationQuery}. Format: "Location: Temperature, Condition" (e.g., "New York: 15°C, Cloudy"). If you don't know the exact current weather, provide a reasonable estimate based on the season and location.`
     });
     res.json(response);
   } catch (err) {
-    console.error(err);
+    console.error('Weather error:', err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -65,7 +65,19 @@ app.post('/api/suggest-outfit', async (req, res) => {
       }
     });
 
-    res.json(response);
+    // Extract JSON text from nested Gemini response
+    let jsonText = response.text || '';
+    if (response.candidates?.[0]?.content?.parts?.[0]?.text) {
+      jsonText = response.candidates[0].content.parts[0].text;
+    }
+    
+    try {
+      const parsed = JSON.parse(jsonText);
+      res.json({ text: jsonText, parsed });
+    } catch (e) {
+      // If JSON parsing fails, return the raw response
+      res.json(response);
+    }
   } catch (err) {
     console.error('suggest-outfit error', err);
     res.status(500).json({ error: String(err) });
@@ -117,12 +129,18 @@ app.post('/api/generate-tryon', async (req, res) => {
           model: 'gemini-2.5-flash',
           contents: {
             parts: [
-              { text: `Create a detailed visual description for an AI image generator of: ${itemDescription}. Include colors, fabrics, fit, and style details. Keep it under 150 words.` }
+              { text: `You are an AI image generator prompt writer. Create a detailed, technical visual description for generating an image of someone wearing: ${itemDescription}. Include specific details about colors, fabrics, fit, and style. Be direct and factual. Do not add commentary or notes. Just the description.` }
             ]
           }
         });
 
-        const styledDescription = styleResponse.text || itemDescription;
+        // Extract text properly from nested Gemini response structure
+        let styledDescription = itemDescription;
+        if (styleResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
+          styledDescription = styleResponse.candidates[0].content.parts[0].text;
+        } else if (styleResponse.text) {
+          styledDescription = styleResponse.text;
+        }
         
         // Return the fallback with a note
         return res.json({ 
@@ -188,11 +206,179 @@ app.post('/api/generate-rotation', async (req, res) => {
 app.post('/api/stylist-chat', async (req, res) => {
   try {
     const { history, newMessage } = req.body;
-    const chat = ai.chats.create({ model: 'gemini-2.5-flash', history: (history || []).map(h => ({ role: h.role, parts: [{ text: h.text }] })) });
+    
+    // Create chat with system context for fashion styling
+    const systemPrompt = `You are Vortex, an expert luxury fashion stylist with 20+ years of experience. Your personality is:
+- Knowledgeable and trendy (aware of current fashion)
+- Personalized and attentive to the user's needs
+- Encouraging and confident
+- Practical but also creative
+- Respectful of diverse styles and body types
+
+Provide fashion advice that is:
+1. Specific and actionable (not generic)
+2. Considers the user's personal style
+3. Explains the 'why' behind recommendations
+4. Includes details about colors, fabrics, and fits
+5. Adaptable to different occasions and seasons
+
+Keep responses conversational but informative (2-3 paragraphs).`;
+    
+    // Build message history with better formatting
+    const messageHistory = [
+      { role: 'user', parts: [{ text: systemPrompt }] },
+      { role: 'model', parts: [{ text: 'Thank you for that context. I\'m ready to provide personalized fashion styling advice. What can I help you with today?' }] }
+    ];
+    
+    // Add conversation history
+    (history || []).forEach(h => {
+      messageHistory.push({
+        role: h.role,
+        parts: [{ text: h.text }]
+      });
+    });
+    
+    const chat = ai.chats.create({ 
+      model: 'gemini-2.5-flash', 
+      history: messageHistory.slice(0, -2) // Exclude the context exchange from history passed to API
+    });
+    
     const response = await chat.sendMessage({ message: newMessage });
     res.json(response);
   } catch (err) {
     console.error('stylist-chat error', err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ============================================================
+// OLLAMA ENDPOINTS
+// ============================================================
+
+const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
+const OLLAMA_TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || 'mistral';
+const OLLAMA_VISION_MODEL = process.env.OLLAMA_VISION_MODEL || 'llava';
+
+console.log('Ollama Configuration:');
+console.log('  OLLAMA_URL:', OLLAMA_URL);
+console.log('  OLLAMA_TEXT_MODEL:', OLLAMA_TEXT_MODEL);
+console.log('  OLLAMA_VISION_MODEL:', OLLAMA_VISION_MODEL);
+
+/**
+ * Helper function to call Ollama API
+ */
+const callOllama = async (model, prompt, image = null) => {
+  try {
+    const payload = {
+      model,
+      prompt,
+      stream: false,
+    };
+    
+    if (image) {
+      payload.images = [image];
+    }
+
+    console.log('Calling Ollama with model:', model);
+    console.log('Ollama URL:', `${OLLAMA_URL}/api/generate`);
+
+    const response = await fetch(`${OLLAMA_URL}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log('Ollama error response:', errorText);
+      throw new Error(`Ollama error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.response || '';
+  } catch (err) {
+    console.error('Ollama call failed:', err);
+    throw err;
+  }
+};
+
+// Ollama: Suggest Outfit
+app.post('/api/ollama/suggest-outfit', async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    // Use text model for outfit suggestions to avoid waiting for vision model
+    const fullPrompt = prompt || `You are an expert fashion stylist. Provide outfit suggestions.`;
+    
+    const response = await callOllama(OLLAMA_TEXT_MODEL, fullPrompt);
+    
+    // Try to parse as JSON, otherwise wrap in JSON
+    let parsed;
+    try {
+      parsed = JSON.parse(response);
+    } catch {
+      // If not JSON, create a default response
+      parsed = {
+        description: response.substring(0, 300),
+        advice: response.substring(300, 600) || 'Here is a look curated for you.'
+      };
+    }
+
+    res.json({ text: JSON.stringify(parsed), parsed });
+  } catch (err) {
+    console.error('ollama suggest-outfit error', err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Ollama: Generate Try-On Description
+app.post('/api/ollama/generate-tryon', async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    // Use text model for try-on descriptions
+    const fullPrompt = prompt || `Describe how this person would look wearing the suggested item.`;
+    
+    const response = await callOllama(OLLAMA_TEXT_MODEL, fullPrompt);
+    
+    res.json({ description: response });
+  } catch (err) {
+    console.error('ollama generate-tryon error', err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Ollama: Stylist Chat
+app.post('/api/ollama/stylist-chat', async (req, res) => {
+  try {
+    const { history, newMessage } = req.body;
+    
+    // Build conversation context
+    const conversationContext = (history || [])
+      .map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.text}`)
+      .join('\n');
+    
+    const fullPrompt = `You are a fashion stylist. Here is the conversation history:\n${conversationContext}\nUser: ${newMessage}\nAssistant:`;
+    
+    const response = await callOllama(OLLAMA_TEXT_MODEL, fullPrompt);
+    
+    res.json({ text: response });
+  } catch (err) {
+    console.error('ollama stylist-chat error', err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Ollama: Get Weather (simulated - Ollama has no real-time access)
+app.post('/api/ollama/get-weather', async (req, res) => {
+  try {
+    const { locationQuery } = req.body;
+    
+    const prompt = `Based on typical weather patterns, describe current weather conditions in ${locationQuery}. Keep it brief (e.g., "Location: 20°C, Sunny"). Note: This is a simulated response as Ollama has no real-time access.`;
+    
+    const response = await callOllama(OLLAMA_TEXT_MODEL, prompt);
+    
+    res.json({ text: response });
+  } catch (err) {
+    console.error('ollama get-weather error', err);
     res.status(500).json({ error: String(err) });
   }
 });

@@ -58,13 +58,32 @@ const apiFetch = async (path: string, body: any, retries: number = 3): Promise<a
 };
 
 /**
- * Fetches the current weather for a given query (City or Lat/Long) using Google Search Grounding.
+ * Fetches the current weather for a given query (City or Lat/Long) using Gemini.
  */
 export const getWeather = async (locationQuery: string): Promise<{ text: string; sources: { title: string; uri: string }[] }> => {
     try {
         const response = await apiFetch('/api/get-weather', { locationQuery });
-        const text = response.text || response.output?.[0]?.text || 'Weather data unavailable';
-        const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((c: any) => c.web).filter((w: any) => w) || [];
+        
+        // Extract text from Gemini response
+        let text = 'Weather data unavailable';
+        let sources: { title: string; uri: string }[] = [];
+        
+        // Try different possible response structures
+        if (response.candidates?.[0]?.content?.parts?.[0]?.text) {
+            text = response.candidates[0].content.parts[0].text;
+        } else if (response.text) {
+            text = response.text;
+        } else if (response.output?.[0]?.text) {
+            text = response.output[0].text;
+        }
+        
+        // Extract sources if available
+        if (response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
+            sources = response.candidates[0].groundingMetadata.groundingChunks
+                .map((c: any) => c.web)
+                .filter((w: any) => w) || [];
+        }
+        
         return { text, sources };
     } catch (error) {
         console.error('Weather Fetch Error:', error);
@@ -92,34 +111,64 @@ export const suggestOutfit = async (
         const weatherContext = weather || "Not specified (assume standard indoor/outdoor)";
 
         const prompt = `
-            You are an expert fashion stylist.
-            Analyze the person in the image.
+            You are an expert luxury fashion stylist with 20+ years of experience. Your task is to provide comprehensive, detailed outfit recommendations.
             
             User Demographics:
             - Gender: ${gender}
             - Skin Tone: ${skinTone}
             
             Context:
-            - User Vision: "${userPreference}"
-            - Target Categories: ${categoriesStr}
-            - Season: "${season}"
-            - Weather: "${weatherContext}"
-            - Region Style: "${nationality}"
+            - User Vision/Preference: "${userPreference}"
+            - Clothing Categories: ${categoriesStr}
+            - Season: ${season}
+            - Weather: ${weatherContext}
+            - Regional/Cultural Style: ${nationality}
 
-            Tasks:
-            1. Analyze the User's Vision (if provided) and the environment.
-            2. WEATHER CHECK: Ensure the outfit is practical for "${weatherContext}". (e.g., suggest breathable fabrics for heat, layers for cold, water-resistant for rain).
-            3. COLOR THEORY: Choose colors that strictly complement the user's ${skinTone} skin tone.
-            4. Refine the description:
-               - If User Vision is present: Keep the core idea but enhance it with weather-appropriate fabrics and flattering cuts.
-               - If User Vision is empty: Create a completely new, trendy look fitting the season/weather.
-            5. Output JSON:
-               - "description": Detailed visual prompt for the image generator (include fabric textures).
-               - "advice": A friendly stylist note explaining how this look adapts to the *Weather* and suits their *Skin Tone*.
+            COMPREHENSIVE ANALYSIS REQUIRED:
+            
+            1. PERSONAL ANALYSIS:
+               - Analyze the person's body type, skin tone, and current style from the image
+               - Consider what flatters their specific complexion and features
+            
+            2. WEATHER-APPROPRIATE STYLING:
+               - For cold (${weatherContext.includes('Cold') || weatherContext.includes('Snow')}): Suggest thermal layers, insulated fabrics, windproof materials
+               - For hot (${weatherContext.includes('Hot') || weatherContext.includes('Sunny')}): Recommend breathable fabrics (cotton, linen), UV protection
+               - For rain: Suggest water-resistant, quick-dry materials
+               - Match fabric weight and texture to the conditions
+            
+            3. COLOR THEORY & SKIN TONE:
+               - Recommend specific colors that complement ${skinTone} skin tone
+               - Explain WHY these colors work (undertones, contrast, harmony)
+               - Suggest complementary accent colors
+            
+            4. FABRIC & MATERIAL RECOMMENDATIONS:
+               - Specific fabric types (silk, cotton, wool blend, etc.)
+               - Texture suggestions for visual interest
+               - Quality indicators for longevity
+            
+            5. STYLING DETAILS:
+               - Specific clothing pieces (brand styles if possible)
+               - Accessory recommendations
+               - Layering suggestions
+               - Pattern and print recommendations
+            
+            6. OCCASION & VERSATILITY:
+               - How this outfit works for the occasion
+               - How to style it differently for other occasions
+               - Mix and match possibilities
+            
+            OUTPUT FORMAT (JSON):
+            {
+              "description": "A 200-300 word detailed visual description of the outfit including: specific pieces, colors, fabrics, textures, patterns, accessories, and styling tips. Make it vivid and descriptive so it could be used as a prompt for an image generator.",
+              "advice": "A 150-200 word friendly stylist recommendation explaining: why these colors work for their skin tone, how the outfit adapts to the weather conditions, care tips, and styling confidence tips. Be encouraging and specific."
+            }
+            
+            Be VERY detailed, specific, and fashion-forward in your recommendations. Avoid generic advice. Provide actionable, wearable recommendations.
         `;
 
         const response = await apiFetch('/api/suggest-outfit', { imageBase64: cleanBase64, userPreference, categories, nationality, season, weather: weatherContext, gender, skinTone, prompt });
-        // server returns the full Gemini response; prefer JSON text if present
+        
+        // Server returns { text: "...", parsed: {...} }
         const json = response.parsed || (response.text ? JSON.parse(response.text || '{}') : {});
         return {
             description: json.description || userPreference || `Stylish ${categoriesStr} for ${gender}`,
@@ -225,10 +274,22 @@ export const getStylistAdvice = async (
 ): Promise<string> => {
     try {
         const response = await apiFetch('/api/stylist-chat', { history, newMessage });
-        return response.text || "I'm having trouble connecting to the fashion mainframe. Please try again.";
+        
+        // Extract text from Gemini response - check multiple possible locations
+        let text = "I'm having trouble connecting to the fashion mainframe. Please try again.";
+        
+        if (response.candidates?.[0]?.content?.parts?.[0]?.text) {
+            text = response.candidates[0].content.parts[0].text;
+        } else if (response.text) {
+            text = response.text;
+        } else if (response.output?.[0]?.text) {
+            text = response.output[0].text;
+        }
+        
+        return text;
 
     } catch (error) {
         console.error("Stylist Chat Error:", error);
-        return "I apologize, but I cannot provide advice at this moment.";
+        return "I apologize, but I cannot provide advice at this moment. Please make sure the backend server is running (npm run server).";
     }
 };

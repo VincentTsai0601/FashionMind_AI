@@ -57,6 +57,60 @@ const App: React.FC = () => {
     }
   }, [chatHistory, activeTab]);
 
+  // Auto-detect user location on app load
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          try {
+            // Use multiple reverse geocoding services for better accuracy
+            let locationName = null;
+            
+            // Try OpenStreetMap Nominatim first
+            try {
+              const response = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`
+              );
+              const data = await response.json();
+              
+              // Prefer city over town, and check for Taipei specifically
+              if (data.address?.city) {
+                locationName = data.address.city;
+              } else if (data.address?.town) {
+                locationName = data.address.town;
+              } else if (data.address?.county) {
+                locationName = data.address.county;
+              }
+            } catch (e) {
+              console.log('Nominatim failed, trying alternative...');
+            }
+            
+            // If no location found, use coordinates
+            if (!locationName) {
+              locationName = `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`;
+            }
+            
+            setLocation(locationName);
+            // Auto-fetch weather for detected location
+            handleFetchWeather(locationName);
+          } catch (error) {
+            console.log('Could not get location name, using coordinates');
+            const coordsLocation = `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`;
+            setLocation(coordsLocation);
+            handleFetchWeather(coordsLocation);
+          }
+        },
+        (error) => {
+          console.log('Geolocation error:', error);
+          // Fallback to a default location if user denies or error occurs
+          setLocation('Taipei');
+          handleFetchWeather('Taipei');
+        }
+      );
+    }
+  }, []);
+
   // --- 3D Tilt Effect Logic ---
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!imageContainerRef.current) return;
@@ -260,18 +314,30 @@ const App: React.FC = () => {
     setChatInput('');
     setIsChatTyping(true);
 
-    const apiHistory = chatHistory.map(m => ({ role: m.role, text: m.text }));
-    const responseText = await GeminiService.getStylistAdvice(apiHistory, newUserMsg.text);
+    try {
+      const apiHistory = chatHistory.map(m => ({ role: m.role, text: m.text }));
+      const responseText = await GeminiService.getStylistAdvice(apiHistory, newUserMsg.text);
 
-    const newBotMsg: ChatMessage = {
-      id: (Date.now() + 1).toString(),
-      role: 'model',
-      text: responseText,
-      timestamp: Date.now()
-    };
+      const newBotMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'model',
+        text: responseText,
+        timestamp: Date.now()
+      };
 
-    setChatHistory(prev => [...prev, newBotMsg]);
-    setIsChatTyping(false);
+      setChatHistory(prev => [...prev, newBotMsg]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      const errorMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'model',
+        text: "I'm having trouble connecting to the stylist. Please try again or check that the backend server is running.",
+        timestamp: Date.now()
+      };
+      setChatHistory(prev => [...prev, errorMsg]);
+    } finally {
+      setIsChatTyping(false);
+    }
   };
 
   // --- Views ---
@@ -384,7 +450,13 @@ const App: React.FC = () => {
                         ? 'bg-fashion-text text-white rounded-t-sm rounded-bl-sm' 
                         : 'bg-fashion-bg text-fashion-text border border-fashion-border rounded-t-sm rounded-br-sm'
                     }`}>
-                        {msg.text}
+                        {msg.text.split(/(?=[-•*]\s)|(?=\d+\.\s)/).map((part, idx) => (
+                            part.match(/^[-•*]\s|^\d+\.\s/) ? (
+                                <div key={idx} className="mb-2">{part}</div>
+                            ) : (
+                                <div key={idx}>{part}</div>
+                            )
+                        ))}
                     </div>
                 </div>
             ))}
@@ -410,7 +482,7 @@ const App: React.FC = () => {
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                     placeholder="Ask about trends, combinations, or color theory..." 
-                    className="w-full bg-fashion-bg border-b-2 border-fashion-border py-5 pl-6 pr-16 text-sm font-medium focus:border-fashion-accent outline-none placeholder-neutral-400 uppercase tracking-wider transition-colors"
+                    className="w-full bg-fashion-bg border-b-2 border-fashion-border py-5 pl-6 pr-16 text-sm font-medium focus:border-fashion-accent outline-none placeholder-neutral-400 tracking-wider transition-colors"
                 />
                 <button 
                     onClick={handleSendMessage}
@@ -441,7 +513,7 @@ const App: React.FC = () => {
                             {/* Input Toggle */}
                             <div className="flex gap-1 text-[10px] uppercase tracking-widest font-medium">
                                 <button 
-                                    onClick={() => setInputMode('upload')}
+                               onClick={() => setInputMode('upload')}
                                     className={`px-2 py-1 transition-colors ${inputMode === 'upload' ? 'text-fashion-accent border-b border-fashion-accent' : 'text-fashion-subtext hover:text-fashion-text'}`}
                                 >
                                     Upload
