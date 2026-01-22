@@ -828,7 +828,7 @@ const App: React.FC = () => {
 
                         {/* Stylist Note */}
                         {stylistAdvice && (
-                            <div className="w-full md:w-80 lg:w-96 flex flex-col self-center animate-[slideUp_1s_ease-out]">
+                            <div className="w-full md:w-80 lg:w-96 flex flex-col self-center animate-[slideUp_1s_ease-out] gap-4">
                                 <div className="relative bg-white/95 backdrop-blur-sm p-8 shadow-xl shadow-neutral-900/5 rounded-sm border-l-4 border-fashion-accent">
                                     <span className="text-[10px] uppercase tracking-[0.3em] text-fashion-subtext block mb-6 font-bold">Director's Note</span>
                                     <p className="font-serif text-lg leading-8 text-fashion-text mb-6">
@@ -837,6 +837,27 @@ const App: React.FC = () => {
                                     <div className="w-12 h-1 bg-fashion-accent mb-2"></div>
                                     <p className="text-xs text-fashion-subtext font-sans tracking-wide">FashionMind AI Atelier</p>
                                 </div>
+                                
+                                {/* Connect with Vortex Button */}
+                                <button 
+                                    onClick={() => {
+                                        // Add the recommendation to chat history
+                                        const newChatMsg: ChatMessage = {
+                                            id: String(chatHistory.length + 1),
+                                            role: 'model',
+                                            text: `Based on your photo, here's my recommendation:\n\n${stylistAdvice}`,
+                                            timestamp: Date.now()
+                                        };
+                                        setChatHistory([...chatHistory, newChatMsg]);
+                                        // Switch to Outfit tab
+                                        setActiveTab(AppTab.OUTFIT);
+                                        // Scroll to bottom
+                                        setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+                                    }}
+                                    className="group relative w-full px-6 py-3 bg-fashion-accent text-white text-xs font-bold uppercase tracking-widest rounded-sm hover:shadow-lg hover:shadow-fashion-accent/30 transition-all duration-200 flex items-center justify-center gap-2"
+                                >
+                                    <span>💬 Connect with Vortex</span>
+                                </button>
                             </div>
                         )}
                     </div>
