@@ -2,19 +2,32 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# FashionMind AI - Virtual Try-On Experience
+# FashionMind AI - Virtual Try-On & AI Stylist Experience
 
-An AI-powered virtual fashion try-on application built with React, TypeScript, Vite, and Google Gemini API.
+An AI-powered virtual fashion application with real-time AI stylist consultation, built with React, TypeScript, Vite, and Google Gemini API.
 
 View your app in AI Studio: https://ai.studio/apps/drive/1iaZ6QEGpi9Ek7AAWGzgttmuuq2l6p7Pe
 
 ## Features
 
-- 📸 **Photo Upload or Camera Capture** - Upload your photo or use your webcam
-- 👗 **Virtual Try-On** - Generate realistic images of yourself wearing different outfits
-- 🎨 **AI Stylist** - Get personalized fashion advice based on your preferences
-- 🌤️ **Weather Integration** - Outfit suggestions adapt to local weather
+- 📸 **Photo Analysis** - Upload your photo or use your webcam for instant analysis
+- 👗 **Smart Outfit Recommendations** - AI-powered personalized styling based on your image and preferences
+- 💬 **AI Stylist Chat (Vortex)** - Real-time conversation with Vortex, your luxury fashion consultant
+  - Personalized advice on colors, fabrics, and fit
+  - Weather-aware styling suggestions
+  - Color theory explanations for your skin tone
+  - Bullet-point formatted responses for clarity
+- 🌤️ **Weather Integration** - Auto-detect location and adapt outfit suggestions to weather conditions
+- 🎨 **Virtual Try-On** - Generate realistic images of yourself wearing different outfits
 - 🎬 **3D Rotation Video** - See 360° turntable videos of your styled outfit
+- 🔄 **Seamless Consultation Flow** - Instantly connect from recommendations to chat with Vortex
+
+## Application Tabs
+
+1. **Home** - Initial landing page and quick styling insights
+2. **Outfit Lab** - Main consultation hub: chat with Vortex, get styling advice, and discuss fashion choices in real-time
+3. **Wardrobe** - Manage and organize your wardrobe items
+4. **3D Virtual Try-On** - Upload photos and generate realistic try-on images with 360° rotation videos
 
 ## Prerequisites
 
@@ -39,6 +52,14 @@ View your app in AI Studio: https://ai.studio/apps/drive/1iaZ6QEGpi9Ek7AAWGzgttm
    ```
 
 ## Quick Start
+
+### Typical Workflow
+
+1. **Navigate to 3D Virtual Try-On tab** → Upload a photo of yourself
+2. **Get AI Recommendations** → Receive detailed styling advice from our AI
+3. **Connect with Vortex** → Click the button to chat with your personal stylist
+4. **Discuss & Refine** → Ask follow-up questions about colors, fabrics, occasions, etc.
+5. **Generate Virtual Try-On** → See realistic images of the suggested outfits
 
 ### macOS / Linux / Ubuntu
 
@@ -96,11 +117,11 @@ FashionMind_AI/
 
 ### Backend Endpoints
 
-- `POST /api/get-weather` - Fetch weather data for a location
-- `POST /api/suggest-outfit` - Get outfit suggestions with AI analysis
-- `POST /api/generate-tryon` - Generate virtual try-on image
-- `POST /api/generate-rotation` - Generate 3D rotation video
-- `POST /api/stylist-chat` - Chat with AI stylist
+- `POST /api/get-weather` - Fetch weather data for a location and auto-detect user location via browser geolocation
+- `POST /api/suggest-outfit` - Get AI outfit suggestions with detailed descriptions and styling advice
+- `POST /api/generate-tryon` - Generate virtual try-on image (uses Gemini 2.5 Flash Image model)
+- `POST /api/generate-rotation` - Generate 3D rotation video of styled outfit
+- `POST /api/stylist-chat` - Chat with Vortex AI stylist with full conversation history support
 - `GET /health` - Health check endpoint
 
 ## Environment Variables
