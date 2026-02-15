@@ -222,11 +222,6 @@ FashionMind AI is deployed using a modern cloud stack:
 - **CI/CD:** GitHub Actions (automatic deployment on push to main)
 - **Live URL:** `https://vincenttsai0601.github.io/FashionMind_AI`
 
-**Deployment Process:**
-1. Push code to `main` branch
-2. GitHub Actions automatically builds the frontend
-3. Built files are deployed to GitHub Pages
-4. Changes live immediately after successful build
 
 ### Backend - Render
 - **Hosting:** Render (free tier available)
@@ -235,13 +230,7 @@ FashionMind AI is deployed using a modern cloud stack:
 - **Live URL:** `https://fashionmind-ai-backend.onrender.com`
 - **Auto-deploy:** Connected to GitHub repository
 
-**Backend Deployment Steps:**
-1. Create account at [render.com](https://render.com)
-2. Connect your GitHub repository
-3. Create a new Web Service
-4. Set environment variables:
-   - `GEMINI_API_KEY`: Your Google Gemini API key
-5. Deploy - changes auto-deploy on push to main
+
 
 ### Environment Variables for Production
 
