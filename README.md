@@ -209,7 +209,74 @@ npm run dev                    # Frontend only (port 3000)
 
 # Build for production
 npm run build                  # Build frontend
+npm run deploy                 # Deploy to production
 ```
+
+## Deployment
+
+FashionMind AI is deployed using a modern cloud stack:
+
+### Frontend - GitHub Pages
+- **Hosting:** GitHub Pages
+- **Build:** Vite (optimized React build)
+- **CI/CD:** GitHub Actions (automatic deployment on push to main)
+- **Live URL:** `https://vincenttsai0601.github.io/FashionMind_AI`
+
+**Deployment Process:**
+1. Push code to `main` branch
+2. GitHub Actions automatically builds the frontend
+3. Built files are deployed to GitHub Pages
+4. Changes live immediately after successful build
+
+### Backend - Render
+- **Hosting:** Render (free tier available)
+- **Runtime:** Node.js
+- **Framework:** Express.js
+- **Live URL:** `https://fashionmind-ai-backend.onrender.com`
+- **Auto-deploy:** Connected to GitHub repository
+
+**Backend Deployment Steps:**
+1. Create account at [render.com](https://render.com)
+2. Connect your GitHub repository
+3. Create a new Web Service
+4. Set environment variables:
+   - `GEMINI_API_KEY`: Your Google Gemini API key
+5. Deploy - changes auto-deploy on push to main
+
+### Environment Variables for Production
+
+When deploying to Render, ensure these environment variables are set:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+NODE_ENV=production
+PORT=3001
+```
+
+### API Base URL Configuration
+
+The frontend automatically detects the environment:
+
+```typescript
+// In services/geminiService.ts
+const API_BASE =
+    import.meta.env.PROD
+    ? 'https://fashionmind-ai-backend.onrender.com'
+    : 'http://localhost:3001';
+```
+
+- **Production:** Connects to Render backend
+- **Development:** Connects to local backend (port 3001)
+
+### Deployment Checklist
+
+- [ ] Gemini API key added to Render environment variables
+- [ ] GitHub Actions workflow configured for frontend builds
+- [ ] Backend service connected to GitHub repo on Render
+- [ ] Test API endpoints work on production
+- [ ] Verify weather auto-detection works
+- [ ] Test outfit recommendations end-to-end
+- [ ] Confirm chat with Vortex functions properly
 
 ### Technology Stack
 
