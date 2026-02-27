@@ -14,8 +14,8 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.0.2",
-    "@capacitor/cli": "^8.0.2",
-    "@capacitor/core": "^8.0.2",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/ios": "^8.1.0",
     "@google/genai": "^1.33.0",
     "body-parser": "^2.2.1",
     "cors": "^2.8.5",
@@ -32,6 +32,8 @@
     "dotenv": "^16.0.3"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.1.0",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",

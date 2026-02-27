@@ -30,7 +30,8 @@ const PORT = process.env.PORT || 3001;
 app.use(cors({
   origin: [
     'http://localhost:3000',
-    'https://vincenttsai0601.github.io'
+    'https://vincenttsai0601.github.io',
+    'capacitor://localhost'
   ],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type'],

@@ -230,7 +230,7 @@ const App: React.FC = () => {
       setItemDescription(finalDescription); 
 
       // Step 2: Generate 3D Assets (Image)
-      setLoadingStage('RENDERING 3D ASSETS... (Please wait, may take up to 30 seconds)');
+      setLoadingStage('RENDERING 3D ASSETS... (Please wait, may take up to 35 seconds)');
       const resultBase64 = await GeminiService.generateVirtualTryOn(
         userImage,
         finalDescription,
