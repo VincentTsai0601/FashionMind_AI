@@ -43,6 +43,10 @@ app.options(/.*/, cors());
 
 app.use(bodyParser.json({ limit: '20mb' }));
 
+app.get('/', (req, res) => {
+  res.send('FashionMind AI Backend is running 🚀');
+});
+
 const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
 if (!apiKey) {
   console.error('GEMINI_API_KEY is missing. Set it in your environment before starting the server.');
