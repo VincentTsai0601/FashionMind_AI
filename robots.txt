@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://vincenttsai0601.github.io/FashionMind_AI/sitemap.xml
