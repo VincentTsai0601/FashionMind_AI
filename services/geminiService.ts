@@ -210,6 +210,7 @@ export const generateVirtualTryOn = async (
         // Using 'gemini-2.5-flash-image' for image editing/generation
         const model = 'gemini-2.5-flash-image';
         
+        
         // Clean base64 string if it contains metadata
         const cleanBase64 = imageBase64.split(',')[1] || imageBase64;
         const categoriesStr = categories.length > 0 ? categories.join(', ') : 'outfit';

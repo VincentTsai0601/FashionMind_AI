@@ -1,12 +1,138 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AppTab, ChatMessage, WardrobeItem } from './types';
+import {
+    AppTab,
+    ChatMessage,
+    WardrobeItem,
+    ClothingSizeOption,
+    UserMeasurements,
+    FitResult,
+    SocialProfile
+} from './types';
 import * as GeminiService from './services/geminiService';
 import FileUpload from './components/FileUpload';
 import CameraCapture from './components/CameraCapture';
 import LoadingSpinner from './components/LoadingSpinner';
 
+
+
+
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AppTab>(AppTab.HOME);
+  //size fit states 
+    const [measurements, setMeasurements] = useState<UserMeasurements>({
+    heightCm: 175,
+    weightKg: 68,
+    chestCm: 92,
+    waistCm: 78,
+    hipCm: 95,
+    shoulderCm: 45,
+    inseamCm: 78,
+    footLengthCm: 26,
+    fitPreference: 'regular'
+    });
+
+    const [fitResult, setFitResult] = useState<FitResult | null>(null);
+
+        const fitScore = (value?: number, min?: number, max?: number) => {
+            if (value == null || min == null || max == null) return 0;
+
+            if (value >= min && value <= max) return 1;
+
+            const distance = Math.min(Math.abs(value - min), Math.abs(value - max));
+            if (distance <= 2) return 0.75;
+            if (distance <= 5) return 0.4;
+            return 0;
+        };
+
+        const handleCheckFit = () => {
+            const clothingOptions: ClothingSizeOption[] = [
+                {
+                    sizeLabel: 'S',
+                    category: 'top',
+                    chestMinCm: 84,
+                    chestMaxCm: 90,
+                    shoulderMinCm: 40,
+                    shoulderMaxCm: 43,
+                    fitType: 'slim'
+                },
+                {
+                    sizeLabel: 'M',
+                    category: 'top',
+                    chestMinCm: 91,
+                    chestMaxCm: 97,
+                    shoulderMinCm: 44,
+                    shoulderMaxCm: 46,
+                    fitType: 'regular'
+                },
+                {
+                    sizeLabel: 'L',
+                    category: 'top',
+                    chestMinCm: 98,
+                    chestMaxCm: 104,
+                    shoulderMinCm: 47,
+                    shoulderMaxCm: 49,
+                    fitType: 'oversized'
+                }
+            ];
+
+            let best: ClothingSizeOption | null = null;
+            let bestScore = -1;
+
+            for (const option of clothingOptions) {
+                const chest = fitScore(measurements.chestCm, option.chestMinCm, option.chestMaxCm);
+                const shoulder = fitScore(measurements.shoulderCm, option.shoulderMinCm, option.shoulderMaxCm);
+
+                let score = 0.7 * chest + 0.3 * shoulder;
+
+                if (measurements.fitPreference === 'loose' && option.fitType === 'oversized') score += 0.1;
+                if (measurements.fitPreference === 'regular' && option.fitType === 'regular') score += 0.1;
+                if (measurements.fitPreference === 'slim' && option.fitType === 'slim') score += 0.1;
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = option;
+                }
+            }
+
+            if (!best) return;
+
+            let fitLabel: FitResult['fitLabel'] = 'Not Recommended';
+            if (bestScore >= 0.9) fitLabel = 'Good Fit';
+            else if (bestScore >= 0.7) fitLabel = 'Relaxed';
+            else if (bestScore >= 0.45) fitLabel = 'Tight';
+
+            setFitResult({
+                recommendedSize: best.sizeLabel,
+                fitScore: Number((bestScore * 100).toFixed(0)),
+                fitLabel,
+                notes: [
+                    `Chest: ${measurements.chestCm} cm`,
+                    `Shoulder: ${measurements.shoulderCm} cm`,
+                    `Preference: ${measurements.fitPreference}`
+                ]
+            });
+        };
+
+    const [socialProfiles, setSocialProfiles] = useState<SocialProfile[]>([
+    {
+        id: '1',
+        name: 'Ava',
+        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=400&auto=format&fit=crop',
+        styleTags: ['minimal', 'streetwear'],
+        favoriteColors: ['black', 'white'],
+        bio: 'Love clean silhouettes and urban layering.',
+        matchScore: 88
+    },
+    {
+        id: '2',
+        name: 'Lina',
+        avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=400&auto=format&fit=crop',
+        styleTags: ['casual', 'elegant'],
+        favoriteColors: ['beige', 'cream'],
+        bio: 'Soft casual looks with elegant details.',
+        matchScore: 81
+    }
+    ]);
   
   // Data States
   const [wardrobe, setWardrobe] = useState<WardrobeItem[]>([]);
@@ -341,7 +467,7 @@ const App: React.FC = () => {
   };
 
   // --- Views ---
-
+  
   const renderHome = () => (
     <div className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden">
         <div className="absolute inset-0 z-0">
@@ -497,7 +623,128 @@ const App: React.FC = () => {
         </div>
     </div>
   );
+    const renderSizeFit = () => (
+    <div className="w-full h-full overflow-y-auto custom-scrollbar p-8 md:p-12">
+        <div className="max-w-5xl mx-auto">
+        <header className="mb-10 border-b border-fashion-border pb-6">
+            <h2 className="font-serif text-4xl italic text-fashion-text mb-2">Size & Fit</h2>
+            <p className="text-[10px] text-fashion-subtext uppercase tracking-widest">
+            Personalized sizing recommendation
+            </p>
+        </header>
 
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="bg-white p-8 shadow-sm border border-fashion-border space-y-4">
+            <h3 className="font-serif italic text-2xl text-fashion-text">Your Measurements</h3>
+
+            <input
+                type="number"
+                value={measurements.chestCm}
+                onChange={(e) => setMeasurements({ ...measurements, chestCm: Number(e.target.value) })}
+                placeholder="Chest (cm)"
+                className="w-full bg-fashion-bg border-b-2 border-fashion-border px-3 py-3 outline-none"
+            />
+
+            <input
+                type="number"
+                value={measurements.shoulderCm}
+                onChange={(e) => setMeasurements({ ...measurements, shoulderCm: Number(e.target.value) })}
+                placeholder="Shoulder (cm)"
+                className="w-full bg-fashion-bg border-b-2 border-fashion-border px-3 py-3 outline-none"
+            />
+
+            <select
+                value={measurements.fitPreference}
+                onChange={(e) =>
+                setMeasurements({
+                    ...measurements,
+                    fitPreference: e.target.value as 'slim' | 'regular' | 'loose'
+                })
+                }
+                className="w-full bg-fashion-bg border-b-2 border-fashion-border px-3 py-3 outline-none"
+            >
+                <option value="slim">Slim</option>
+                <option value="regular">Regular</option>
+                <option value="loose">Loose</option>
+            </select>
+
+            <button
+                onClick={handleCheckFit}
+                className="w-full py-4 bg-fashion-text text-white text-xs uppercase tracking-[0.2em] hover:bg-fashion-accent transition-colors"
+            >
+                Check My Fit
+            </button>
+            </div>
+
+            <div className="bg-white p-8 shadow-sm border border-fashion-border">
+            <h3 className="font-serif italic text-2xl text-fashion-text mb-6">Result</h3>
+
+            {fitResult ? (
+                <div className="space-y-4">
+                <p className="text-sm uppercase tracking-widest text-fashion-subtext">Recommended Size</p>
+                <p className="font-serif text-5xl italic text-fashion-accent">{fitResult.recommendedSize}</p>
+                <p className="text-lg text-fashion-text">{fitResult.fitLabel}</p>
+                <p className="text-sm text-fashion-subtext">Confidence: {fitResult.fitScore}%</p>
+
+                <ul className="list-disc pl-5 text-sm text-fashion-text space-y-2">
+                    {fitResult.notes.map((note, index) => (
+                    <li key={index}>{note}</li>
+                    ))}
+                </ul>
+                </div>
+            ) : (
+                <p className="text-fashion-subtext">Enter your measurements to see your recommended fit.</p>
+            )}
+            </div>
+        </div>
+        </div>
+    </div>
+    );
+  const renderSocial = () => (
+  <div className="w-full h-full overflow-y-auto custom-scrollbar p-8 md:p-12">
+    <div className="max-w-6xl mx-auto">
+      <header className="mb-10 border-b border-fashion-border pb-6">
+        <h2 className="font-serif text-4xl italic text-fashion-text mb-2">Social Connection</h2>
+        <p className="text-[10px] text-fashion-subtext uppercase tracking-widest">
+          Find people with similar style
+        </p>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {socialProfiles.map((profile) => (
+          <div key={profile.id} className="bg-white border border-fashion-border shadow-sm overflow-hidden">
+            <img src={profile.avatar} alt={profile.name} className="w-full h-72 object-cover" />
+            <div className="p-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-serif italic text-2xl text-fashion-text">{profile.name}</h3>
+                <span className="text-xs uppercase tracking-widest text-fashion-accent">
+                  {profile.matchScore}% Match
+                </span>
+              </div>
+
+              <p className="text-sm text-fashion-subtext">{profile.bio}</p>
+
+              <div className="flex flex-wrap gap-2">
+                {profile.styleTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-3 py-1 text-[10px] uppercase tracking-widest bg-fashion-bg border border-fashion-border"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+
+              <button className="w-full py-3 bg-fashion-text text-white text-xs uppercase tracking-[0.2em] hover:bg-fashion-accent transition-colors">
+                Connect
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
   const renderTryOn = () => (
     <div className="flex flex-col md:flex-row h-full">
         {/* Left Panel: Inputs */}
@@ -873,7 +1120,7 @@ const App: React.FC = () => {
         </div>
     </div>
   );
-
+  
   return (
     <div className="flex flex-col h-screen bg-fashion-bg text-fashion-text overflow-hidden selection:bg-fashion-accent selection:text-white">
       
@@ -910,6 +1157,23 @@ const App: React.FC = () => {
             >
                 3D Virtual Try-On
             </button>
+            <button
+                onClick={() => setActiveTab(AppTab.SIZE_FIT)}
+                className={`uppercase hover:text-fashion-accent transition-all py-2 border-b-2 border-transparent ${
+                    activeTab === AppTab.SIZE_FIT ? 'text-fashion-accent border-fashion-accent' : 'text-fashion-subtext'
+                }`}
+                >
+                Size & Fit
+            </button>
+
+                <button
+                onClick={() => setActiveTab(AppTab.SOCIAL)}
+                className={`uppercase hover:text-fashion-accent transition-all py-2 border-b-2 border-transparent ${
+                    activeTab === AppTab.SOCIAL ? 'text-fashion-accent border-fashion-accent' : 'text-fashion-subtext'
+                }`}
+                >
+                Social
+            </button>
         </nav>
       </header>
 
@@ -919,9 +1183,13 @@ const App: React.FC = () => {
           {activeTab === AppTab.OUTFIT && renderOutfitLab()}
           {activeTab === AppTab.WARDROBE && renderWardrobe()}
           {activeTab === AppTab.TRY_ON && renderTryOn()}
+          {activeTab === AppTab.SIZE_FIT && renderSizeFit()}
+          {activeTab === AppTab.SOCIAL && renderSocial()}
       </main>
     </div>
   );
 };
+
+
 
 export default App;
